@@ -46,7 +46,7 @@ COLORES = {
 
 HISTORIAS = [
     ("HU-01", "Como paciente, quiero registrar mi llegada y especialidad en el sistema, para iniciar el control de mi turno.", 1, 5),
-    ("HU-02", "Como administrador del hospital, quiero que el sistema genere datos sintéticos calibrados con ENSUSALUD, para simular escenarios reales de atención.", 1, 8),
+    ("HU-02", "Como administrador del hospital, quiero que el sistema genere datos sintéticos calibrados con parámetros estándar de atención, para simular escenarios reales de operación.", 1, 8),
     ("HU-03", "Como sistema, quiero predecir el tiempo de espera estimado mediante Random Forest, para informar al paciente y al personal.", 2, 8),
     ("HU-04", "Como gestor de salud, quiero visualizar los turnos y métricas en un dashboard en la nube, para observar el flujo en tiempo real.", 2, 8),
     ("HU-05", "Como desarrollador, quiero evaluar el modelo predictivo con métricas de rendimiento, para asegurar la calidad de la predicción.", 3, 5),
