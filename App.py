@@ -26,6 +26,14 @@ st.set_page_config(
 )
 
 ESTADOS = ["Por hacer", "En curso", "Hecho"]
+MIEMBROS = [
+    "Castilla Quiroz, Jahir Daniel",
+    "Llanos Castillo, Diego Alonso",
+    "Medina Torres, Ryan Patrick",
+    "Silvera Alegría, Andrea Lucia",
+    "Quispe Bartolo, Carlos Martin",
+    "Villar Rosado, Maylor Mark",
+]
 ARCHIVO_DATOS = Path("datos_tablero.json")  # guarda el avance entre recargas
 ZONA = ZoneInfo("America/Lima")
 
@@ -59,7 +67,12 @@ CODIGOS = list(CATALOGO.keys())
 # Estado y persistencia
 # ----------------------------------------------------------------------------
 def estado_inicial():
-    return {"estados": {c: 0 for c in CODIGOS}, "bitacora": [], "siguiente_id": 1}
+    return {
+        "estados": {c: 0 for c in CODIGOS},
+        "responsables": {c: None for c in CODIGOS},
+        "bitacora": [],
+        "siguiente_id": 1,
+    }
 
 
 def cargar():
@@ -67,6 +80,8 @@ def cargar():
         try:
             datos = json.loads(ARCHIVO_DATOS.read_text(encoding="utf-8"))
             if set(datos["estados"]) == set(CODIGOS):
+                # compatibilidad con archivos guardados antes de existir el responsable
+                datos.setdefault("responsables", {c: None for c in CODIGOS})
                 return datos
         except (json.JSONDecodeError, KeyError, OSError):
             pass
@@ -76,6 +91,7 @@ def cargar():
 def guardar():
     datos = {
         "estados": st.session_state.estados,
+        "responsables": st.session_state.responsables,
         "bitacora": st.session_state.bitacora,
         "siguiente_id": st.session_state.siguiente_id,
     }
@@ -90,16 +106,20 @@ def guardar():
 if "estados" not in st.session_state:
     datos = cargar()
     st.session_state.estados = datos["estados"]
+    st.session_state.responsables = datos["responsables"]
     st.session_state.bitacora = datos["bitacora"]
     st.session_state.siguiente_id = datos["siguiente_id"]
 if "aviso" not in st.session_state:
     st.session_state.aviso = None
 
 
-def avanzar(codigo: str, nota: str):
-    """Pasa la historia al estado siguiente y registra la nota."""
+def avanzar(codigo: str, nota: str, responsable: str | None = None):
+    """Pasa la historia al estado siguiente y registra la nota.
+    Si sale de «Por hacer», también fija el responsable (no se puede cambiar después)."""
     actual = st.session_state.estados[codigo]
     st.session_state.estados[codigo] = actual + 1
+    if actual == 0 and responsable:
+        st.session_state.responsables[codigo] = responsable
     st.session_state.bitacora.append(
         {
             "id": st.session_state.siguiente_id,
@@ -107,6 +127,7 @@ def avanzar(codigo: str, nota: str):
             "desde": ESTADOS[actual],
             "hacia": ESTADOS[actual + 1],
             "nota": nota.strip(),
+            "responsable": responsable if actual == 0 else None,
             "fecha": datetime.now(ZONA).strftime("%d/%m/%Y %H:%M"),
         }
     )
@@ -115,9 +136,12 @@ def avanzar(codigo: str, nota: str):
 
 
 def retroceder(codigo: str):
-    """Revierte el último avance de la historia y borra su nota de la bitácora."""
+    """Revierte el último avance de la historia y borra su nota de la bitácora.
+    Al volver a «Por hacer» también se libera el responsable para poder reasignarlo."""
     actual = st.session_state.estados[codigo]
     st.session_state.estados[codigo] = actual - 1
+    if actual - 1 == 0:
+        st.session_state.responsables[codigo] = None
     for i in range(len(st.session_state.bitacora) - 1, -1, -1):
         if st.session_state.bitacora[i]["historia"] == codigo:
             del st.session_state.bitacora[i]
@@ -158,6 +182,8 @@ st.markdown(
                  text-align: center; color: #1D2B33; }
     .kanban td.hu { text-align: left; font-weight: 600; white-space: nowrap; }
     .kanban td.resumen { text-align: left; color: #4A6572; font-size: .92rem; }
+    .kanban td.resp { text-align: left; font-size: .9rem; white-space: nowrap; }
+    .responsable { color: inherit; font-weight: 700; }
     .kanban td.marca { font-weight: 700; font-size: 1.15rem; }
     .kanban td.m-0 { background: #E8EDF2; color: #3B4B5C; }
     .kanban td.m-1 { background: #FFF1D6; color: #8A5A00; }
@@ -223,14 +249,18 @@ with tab_tablero:
             else:
                 celdas += "<td></td>"
         resumen = html.escape(CATALOGO[c]["descripcion"].split(", quiero ")[-1].split(", para")[0])
+        resp = st.session_state.responsables.get(c)
+        resp_html = html.escape(resp) if resp else '<span style="opacity:.5">Sin asignar</span>'
         filas += (
             f'<tr><td class="hu">{c}</td>'
-            f'<td class="resumen">Quiero {resumen}</td>{celdas}</tr>'
+            f'<td class="resumen">Quiero {resumen}</td>'
+            f'<td class="resp">{resp_html}</td>{celdas}</tr>'
         )
     st.markdown(
         f"""
         <table class="kanban">
           <thead><tr><th>Historia</th><th style="text-align:left">Objetivo</th>
+          <th style="text-align:left">Responsable</th>
           <th>Por hacer</th><th>En curso</th><th>Hecho</th></tr></thead>
           <tbody>{filas}</tbody>
         </table>
@@ -263,13 +293,32 @@ with tab_tablero:
         )
     st.caption(CATALOGO[codigo]["descripcion"])
 
+    responsable_actual = st.session_state.responsables.get(codigo)
+    if responsable_actual:
+        st.markdown(
+            f"Responsable: <span class='responsable'>{html.escape(responsable_actual)}</span>",
+            unsafe_allow_html=True,
+        )
+        st.caption(
+            "El responsable queda fijo mientras la historia esté en curso o hecha. "
+            "Para cambiarlo, deshaz hasta «Por hacer» y asígnalo de nuevo."
+        )
+
     col_avanzar, col_deshacer = st.columns([3, 1], gap="large")
 
-    # --- Avanzar (con nota obligatoria) ---
+    # --- Avanzar (con responsable al salir de «Por hacer» y nota obligatoria) ---
     with col_avanzar:
         if idx_actual < 2:
             siguiente = ESTADOS[idx_actual + 1]
             with st.form(f"form_avanzar_{codigo}_{idx_actual}", clear_on_submit=True):
+                elegido = None
+                if idx_actual == 0:
+                    elegido = st.selectbox(
+                        "Responsable de la historia",
+                        MIEMBROS,
+                        index=None,
+                        placeholder="Selecciona un integrante del grupo…",
+                    )
                 etiqueta = (
                     "¿Qué se va a hacer para resolver esta historia?"
                     if siguiente == "En curso"
@@ -280,10 +329,12 @@ with tab_tablero:
                     f"Mover a «{siguiente}»", type="primary", use_container_width=True
                 )
             if enviar:
-                if not nota.strip():
+                if idx_actual == 0 and not elegido:
+                    st.warning("Selecciona un responsable antes de pasar a «En curso».")
+                elif not nota.strip():
                     st.warning("Escribe una nota antes de cambiar el estado.")
                 else:
-                    avanzar(codigo, nota)
+                    avanzar(codigo, nota, elegido)
                     st.session_state.aviso = ("ok", f"{codigo} pasó a «{siguiente}».")
                     st.rerun()
         else:
@@ -297,9 +348,10 @@ with tab_tablero:
             anterior = ESTADOS[idx_actual - 1]
             if st.button(f"Deshacer y volver a «{anterior}»", use_container_width=True):
                 retroceder(codigo)
+                extra = " El responsable quedó libre para asignarlo de nuevo." if anterior == "Por hacer" else ""
                 st.session_state.aviso = (
                     "warn",
-                    f"{codigo} volvió a «{anterior}» y su nota fue eliminada de la bitácora.",
+                    f"{codigo} volvió a «{anterior}» y su nota fue eliminada de la bitácora.{extra}",
                 )
                 st.rerun()
         else:
@@ -311,6 +363,7 @@ with tab_tablero:
         if st.button("Reiniciar tablero", disabled=not confirmar):
             base = estado_inicial()
             st.session_state.estados = base["estados"]
+            st.session_state.responsables = base["responsables"]
             st.session_state.bitacora = base["bitacora"]
             st.session_state.siguiente_id = base["siguiente_id"]
             guardar()
@@ -334,6 +387,8 @@ with tab_detalle:
         mostradas += 1
         fondo, texto_color = COLORES[ESTADOS[idx]]
         h = CATALOGO[c]
+        resp = st.session_state.responsables.get(c)
+        resp_txt = html.escape(resp) if resp else "Sin asignar"
         st.markdown(
             f"""
             <div class="historia">
@@ -341,7 +396,8 @@ with tab_detalle:
                 <span class="cod">{c}</span>
                 <span class="badge" style="background:{fondo};color:{texto_color}">{ESTADOS[idx]}</span>
               </div>
-              <div class="meta">Prioridad {h['prioridad']} &nbsp;|&nbsp; {h['sp']} Story Points</div>
+              <div class="meta">Prioridad {h['prioridad']} &nbsp;|&nbsp; {h['sp']} Story Points
+                &nbsp;|&nbsp; Responsable: <b>{resp_txt}</b></div>
               <div class="desc">{html.escape(h['descripcion'])}</div>
             </div>
             """,
@@ -367,12 +423,13 @@ with tab_detalle:
 
     if st.session_state.bitacora:
         st.markdown("### Bitácora completa")
-        df = pd.DataFrame(st.session_state.bitacora)[
-            ["fecha", "historia", "desde", "hacia", "nota"]
-        ].rename(
+        df = pd.DataFrame(st.session_state.bitacora).reindex(
+            columns=["fecha", "historia", "responsable", "desde", "hacia", "nota"]
+        ).rename(
             columns={
                 "fecha": "Fecha",
                 "historia": "Historia",
+                "responsable": "Responsable asignado",
                 "desde": "Desde",
                 "hacia": "Hacia",
                 "nota": "Nota",
