@@ -140,13 +140,14 @@ st.markdown(
     html, body, [class*="css"], .stMarkdown, .stButton button, .stTextArea textarea {
         font-family: 'Source Sans 3', sans-serif;
     }
-    .block-container { padding-top: 2rem; max-width: 1200px; }
+    .block-container { padding-top: 5rem; max-width: 1200px; }
 
     .titulo {
         font-family: 'Source Serif 4', serif;
-        font-size: 2rem; font-weight: 700; color: #0F3D4C; margin: 0;
+        font-size: 2rem; font-weight: 700; color: inherit;
+        margin: 0; line-height: 1.3; padding-top: .25rem;
     }
-    .subtitulo { color: #4A6572; margin: .25rem 0 1.25rem 0; font-size: 1.02rem; }
+    .subtitulo { color: inherit; opacity: .75; margin: .35rem 0 1.25rem 0; font-size: 1.02rem; }
 
     .kanban { width: 100%; border-collapse: collapse; background: #fff;
               border: 1px solid #D5DEE4; border-radius: 10px; overflow: hidden; }
